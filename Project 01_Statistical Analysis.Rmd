@@ -1,0 +1,551 @@
+---
+title: "DSE5002 Project 01"
+output: html_notebook
+name: Alexis Root
+---
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(skimr)
+library(scales)
+library(GGally)
+```
+
+
+```{r}
+my_comp_data <- read.csv("C:/Users/Lex/Downloads/Masters/SQL and Python Programming/Project 01/project_1_data.csv")
+```
+
+```{r}
+head(my_comp_data)
+```
+```{r}
+str(my_comp_data)
+```
+
+```{r}
+#re factoring variables, ordering company size and experience levels
+my_comp_data <- my_comp_data |>
+  mutate(
+    salary = as.numeric(salary),
+    salary_in_usd = as.numeric(salary_in_usd),
+    company_location   = factor(company_location),
+    employee_residence = factor(employee_residence),
+    salary_currency    = factor(salary_currency),
+    job_title          = factor(job_title),
+    employment_type    = factor(employment_type),
+    company_size = factor(company_size,
+                          levels = c("S","M","L"),
+                          labels = c("Small","Medium","Large"),
+                          ordered = TRUE),
+    
+   experience_level = factor(experience_level,
+                              levels = c("EN","MI","SE", "EX"),
+                              labels = c("Entry Level","Mid Level","Senior Level", "Executive Level"),
+                              ordered = TRUE),
+  ) 
+```
+
+
+```{r}
+summary(my_comp_data)
+
+#X- x value are based on number of rows in the data set, not super helpful but good to know.
+#Need to change X so it's an ID column not a variable.
+#work_year- shows the data spans only from 2020-2022, this is not recent data but not super old either. Would be good to note that the job market has changed since 2022. 
+#experience_level- There's not many level employees within the data, something to note but we're not really looking for an entry level position. We need someone who already knows what they are doing, someone who wouldn't need a more experienced employee to guide them.
+#employment_type- Most employees in the data set work full time as expected. They have some contracted workers and freelancers who are hired to work on one project. Should keep freelancers out of analysis since we're not looking for someone to work one project, this is a permanent position with an opportunity for growth. We can also filter out part time positions.
+#job_title- There's a few similar categories and the other category is not useful for this, no information is given to know if it is comparable. The other category has the highest count which is concerning. Would be good to look at the cost of a data science manager versus data scientist, and other categories besides others. Will need to confirm what all the job titles are to see if they are relevant to the search.
+#salary- Confirmed Min value was for a freelancer, there's actually two entries for $4K salary. Max value is high due to the difference in currency; the conversion to US dollars was a little over $40K.
+#salary_currency- More than half of the salaries are originally in USD but there's a large amount of other countries currencies included in the data set. It would be good to try and test against USD currency versus all other countries currency salary rates to see if the currency exchange rate has a major impact on salary.
+#salary_in_usd- Max employee salary is for a senior position although the level field is N/A, the job title is principal analyst which is a senior role. Regardless of it being a senior role $600K is too high a salary based on the average for the salary in USD being 333K. I believe that is an outlier, that is the only employee in that role listed as making over $400K.
+#employee_residence- Most people reside in the US but a good portion of people also reside from other countries.
+#remote_ratio- There are some hybrid roles, something to consider when looking at options. They didn't say if they want someone strictly onsite, and considering the offshore portion of the assignment, there is an option for a fully remote position. A majority of the people seem to work on site or at least hybrid versus fully remote since the mean is above 50.
+#company_location- There's a lot of US companies included in the data set, they are more than half of them, but there's also a lot of companies outside the US. Can use a grouping method to compare salaries as the CEO requested, they would like to know what the difference is for a person working in the United States.
+#company_size- There's not a lot of small companies included in this set. There seems to be a good amount of companies included overall.
+```
+```{r}
+my_comp_data |>
+  distinct(job_title)
+```
+
+```{r}
+my_comp_data |>
+  filter(salary == min(salary))
+```
+```{r}
+my_comp_data |>
+  filter(salary == max(salary, na.rm = TRUE))
+```
+```{r}
+my_comp_data |>
+  filter(job_title == "Data Scientist",
+    employment_type == "FT",
+    experience_level == "Mid Level"
+  ) |>
+  summarise(
+    avg_salary = mean(salary, na.rm = TRUE)
+  )
+```
+```{r}
+my_comp_data |>
+  filter(salary == max(salary_in_usd, na.rm = TRUE))
+```
+
+```{r}
+my_comp_data |>
+  filter(job_title == "Principal Data Engineer",
+    employment_type == "FT",
+  ) |>
+  summarise(
+    avg_salary_usd = mean(salary_in_usd, na.rm = TRUE)
+  )
+```
+```{r}
+my_comp_data |>
+  filter(salary_in_usd >= 400000,
+   job_title == "Principal Data Engineer"      
+  )
+```
+
+```{r}
+skim(my_comp_data)
+#no missing values is good
+#company size and experience level are ordered as needed
+#categories are being shown as numeric because they are being stored as numbers
+```
+
+```{r}
+# Map job titles to refined broader categories; used AI (chat GPT) to take list of all 50 job titles in data set and convert them to groups. Refined suggested groups to better fit what I thought made the most sense.
+title_grouped_comp_data <- my_comp_data |>
+  mutate(
+    job_group = case_when(
+      str_detect(job_title, regex("DATA SCIENTIST|LEAD DATA SCIENTIST|PRINCIPAL DATA SCIENTIST|STAFF DATA SCIENTIST|APPLIED DATA SCIENTIST|DATA SCIENCE CONSULTANT|DATA SPECIALIST", ignore_case = TRUE)) ~ "Data Scientist",
+      
+      str_detect(job_title, regex("MACHINE LEARNING|ML ENGINEER|AI SCIENTIST|NLP ENGINEER|COMPUTER VISION|APPLIED MACHINE LEARNING", ignore_case = TRUE)) ~ "Machine Learning / AI Engineer",
+      
+      str_detect(job_title, regex("DATA ANALYST|PRODUCT DATA ANALYST|BUSINESS DATA ANALYST|MARKETING DATA ANALYST|FINANCIAL DATA ANALYST|BI DATA ANALYST|PRINCIPAL DATA ANALYST|DATA ANALYTICS LEAD", ignore_case = TRUE)) ~ "Data Analyst",
+      
+      str_detect(job_title, regex("DATA ENGINEER|LEAD DATA ENGINEER|DATA SCIENCE ENGINEER|DATA ARCHITECT|PRINCIPAL DATA ENGINEER|BIG DATA|CLOUD DATA ENGINEER|ETL DEVELOPER|ANALYTICS ENGINEER", ignore_case = TRUE)) ~ "Data Engineer / Architect",
+      
+      TRUE ~ "Other"  # Any remaining titles that do not match
+    )
+  )
+```
+
+```{r}
+#Making sure there's no "Other" entries anymore
+title_grouped_comp_data |> filter(job_title == "Other")
+```
+
+```{r}
+#check groupings to ensure salaries are more or less consistent across experience level on USD salary range. Otherwise I would be concerned my groupings are not a good fit.
+
+title_grouped_comp_data |>
+  filter(job_group == "Data Scientist", !is.na(experience_level)) |>
+  ggplot(aes(x = job_title, y = salary_in_usd, color = experience_level)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Salary Distribution by Job Title for Data Scientists",
+    x = "Job Title",
+    y = "Salary (USD)",
+    color = "Experience Level"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(face = "bold", size = 14)
+  )
+
+#Applied Data scientist has a wide spread for their senior level positions. The rest look as expected
+```
+```{r}
+title_grouped_comp_data |>
+  filter(job_group == "Machine Learning / AI Engineer", !is.na(experience_level)) |>
+  ggplot(aes(x = job_title, y = salary_in_usd, color = experience_level)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Salary Distribution by Job Title for Machine Learning / AI Engineer",
+    x = "Job Title",
+    y = "Salary (USD)",
+    color = "Experience Level"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(face = "bold", size = 14)
+  )
+#Not really any jobs here that would fit the description for what the CEO needs at this time. Could be something to consider down the line to have but not what we need now. Some job titles don't have any senior positions in this grouping, a couple don't have any entry level. There's a large span for the applied machine learning analyst that either just has a large array of salaries for some reason or is an error; irrelevant for this project.
+```
+```{r}
+title_grouped_comp_data |>
+  filter(job_group == "Data Analyst", !is.na(experience_level)) |>
+  ggplot(aes(x = job_title, y = salary_in_usd, color = experience_level)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = comma) +
+  labs(
+    title = "Salary Distribution by Job Title for Data Analysts",
+    x = "Job Title",
+    y = "Salary (USD)",
+    color = "Experience Level"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(face = "bold", size = 14)
+  )
+#This looks like a good grouping of job titles. There appears to be two outliers at the top, since this is in USD, those are much higher than the other salaries.
+```
+```{r}
+title_grouped_comp_data |>
+  filter(
+    job_group == "Data Scientist",
+    employment_type %in% c("FT", "CT"),
+    employee_residence== "US",
+    !is.na(experience_level)
+  ) |>
+  ggplot(aes(x = experience_level, y = salary_in_usd, color = experience_level)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::dollar) +
+  labs(
+    title = "US Data Scientist Salaries by Experience Level",
+    x = "Experience Level",
+    y = "Salary (USD)",
+    color= "Experience Level"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+```{r}
+title_grouped_comp_data |>
+  filter(
+    job_group == "Data Scientist",
+    employment_type %in% c("FT", "CT"),
+    employee_residence!= "US",
+    !is.na(experience_level)
+  ) |>
+  ggplot(aes(x = experience_level, y = salary_in_usd, color = experience_level)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::dollar) +
+  labs(
+    title = "US Data Scientist Salaries by Experience Level",
+    x = "Experience Level",
+    y = "Salary (USD)",
+    color= "Experience Level"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+#The salaries are much lower when the employee resides in another country, that is not the US. Will need to check if this is significant or not.
+```
+```{r}
+#plot comparing all the variables from the dataset
+numeric_vars <- my_comp_data |>
+  select(where(is.numeric))
+ggpairs(numeric_vars)
+#no correlation between the variables really. Not really expecting a lot of correlation with variables within this dataset, since there are a range of factors that impact salary.
+```
+```{r}
+#Checking if currency rates are impacting salary
+currency_analysis <- my_comp_data |>
+  mutate(currency_group = ifelse(salary_currency == "USD", "USD", "Other")) |>
+  filter(!is.na(salary_in_usd))
+```
+
+
+```{r}
+#using US currency column for summary calculations but renamed as salary for table output results
+currency_analysis |>
+  group_by(currency_group) |>
+  summarise(
+    count = n(),
+    mean_salary = mean(salary_in_usd, na.rm = TRUE),
+    median_salary = median(salary_in_usd, na.rm = TRUE),
+    sd_salary = sd(salary_in_usd, na.rm = TRUE),
+    min_salary = min(salary_in_usd, na.rm = TRUE),
+    max_salary = max(salary_in_usd, na.rm = TRUE)
+  )
+
+#Salaries are much lower for other currencies, extremely large gap in mean salaries. Less of a gap in median salaries is good to see, I recall there are some outliers in this dataset. Larger SD shown in US currency. 
+```
+
+```{r}
+ggplot(currency_analysis, aes(x = currency_group, y = salary_in_usd, fill = currency_group)) +
+  geom_boxplot(alpha = 0.7) +
+  scale_y_continuous(labels = scales::dollar) +
+  labs(
+    title = "Salary in USD: Original USD vs Other Currencies",
+    x = "Currency Group",
+    y = "Salary (USD)"
+  ) +
+  theme_minimal()
+
+#There's outliers on both boxplots but more outliers on the US currency boxplot. The other currency boxplot has a smaller spread and it's upper tail ends about halfway up the US currency upper-bound tail.
+```
+
+```{r}
+t_test_result <- t.test(salary_in_usd ~ currency_group, data = currency_analysis)
+t_test_result
+
+#T is large suggesting that there is a large difference between the two groups. P-value is very small, so that means that there is a very small chance that there is not a difference between the two groups. The difference in the means of the two groups is statistically significant. I can report back to the CEO that it would be cheaper to higher an offshore employee; based on these t-test results, we have reason to believe that the cost would be cheaper.
+```
+```{r}
+#updating job groupings based on analysis of original grouping
+title_grouped_comp_data <- my_comp_data |>
+  mutate(
+    job_group = case_when(
+      str_detect(job_title, regex("DATA SCIENTIST|LEAD DATA SCIENTIST|PRINCIPAL DATA SCIENTIST|STAFF DATA SCIENTIST|APPLIED DATA SCIENTIST|DATA SCIENCE CONSULTANT|DATA SCIENCE ENGINEER|DATA SPECIALIST", ignore_case = TRUE)) ~ "Data Scientist",
+      
+      str_detect(job_title, regex("MACHINE LEARNING|ML ENGINEER|AI SCIENTIST|NLP ENGINEER|COMPUTER VISION|APPLIED MACHINE LEARNING", ignore_case = TRUE)) ~ "Machine Learning / AI Engineer",
+      
+      str_detect(job_title, regex("DATA ANALYST|PRODUCT DATA ANALYST|BUSINESS DATA ANALYST|MARKETING DATA ANALYST|FINANCIAL DATA ANALYST|BI DATA ANALYST|PRINCIPAL DATA ANALYST|DATA ANALYTICS LEAD|ANALYTICS ENGINEER", ignore_case = TRUE)) ~ "Data Analyst",
+      
+      str_detect(job_title, regex("DATA ENGINEER|LEAD DATA ENGINEER|DATA ARCHITECT|PRINCIPAL DATA ENGINEER|BIG DATA|CLOUD DATA ENGINEER|ETL DEVELOPER", ignore_case = TRUE)) ~ "Data Engineer / Architect",
+      
+      TRUE ~ "Other"  # Any remaining titles that do not match
+    )
+  )
+```
+
+```{r}
+title_grouped_comp_data |>
+  filter(
+    employment_type == "FT",
+    job_group == "Data Scientist",
+    !is.na(experience_level)
+  ) |>
+  ggplot(aes(x = job_group, y = salary_in_usd, color= experience_level, fill= experience_level)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::dollar) +
+  labs(
+    title = "Salary Range for Full-Time Data Scientists",
+    x = NULL,
+    y = "Salary (USD)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+  )
+```
+
+
+```{r}
+title_grouped_comp_data |>
+  mutate(currency_group = ifelse(salary_currency == "USD", "USD", "Offshore")) |>
+  filter(
+    !is.na(salary_in_usd),
+    employment_type == "FT",
+    job_group == "Data Scientist",
+  ) |>
+  ggplot(aes(x = currency_group, y = salary_in_usd, color= experience_level, fill= experience_level)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::dollar) +
+  labs(
+    title = "Salary Range for Full-Time Data Scientists By Currency",
+    x = "US Versus Foreign Currency",
+    y = "Salary (USD)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+  )
+#You could potentially hire a senior level employee who lives offshore and it would cost about the same as hiring an entry level to mid-level employee who lives in the US. Hiring someone offshores would cut the cost of hiring a senior menber by nearly half.
+```
+```{r}
+title_grouped_comp_data |>
+  mutate(employee_residence = ifelse(employee_residence == "US", "US", "Offshore")) |>
+  count(employee_residence)
+```
+
+```{r}
+title_grouped_comp_data |>
+  mutate(residence_group = ifelse(employee_residence == "US", "US", "Offshore")) |>
+  filter(
+    employment_type == "FT",
+    job_group == "Data Scientist",
+    experience_level %in% c("Senior Level", "Mid Level")
+  ) |>
+  count(residence_group)
+```
+
+
+```{r}
+title_grouped_comp_data |>
+  mutate(
+    residence_group = if_else(employee_residence == "US", "US", "Offshore"),
+    residence_group = factor(residence_group, levels = c("US", "Offshore"))
+  ) |>
+  filter(
+    employment_type == "FT",
+    job_group == "Data Scientist",
+    experience_level %in% c("Mid Level")
+  ) |>
+  ggplot(aes(x = residence_group,
+             y = salary_in_usd,
+             color = experience_level,
+             fill = experience_level)) +
+  geom_boxplot() +
+  scale_y_continuous(labels = scales::dollar) +
+  labs(
+    title = "Salary Range for Full-Time Data Scientists, Domestic Vs Offshore",
+    x = "Domestic Versus Offshore",
+    y = "Salary (USD)"
+  ) +
+  theme_minimal()
+```
+
+
+```{r}
+# Table 2 (Summary): Data Scientists salary range by company size
+salary_summary_size <- title_grouped_comp_data |>
+  filter(
+    !is.na(salary_in_usd),
+    employment_type == "FT",
+    job_group == "Data Scientist",
+    !is.na(company_size)
+  ) |>
+  group_by(company_size) |>
+  summarise(
+    count = n(),
+    min_salary = min(salary_in_usd, na.rm = TRUE),
+    max_salary = max(salary_in_usd, na.rm = TRUE),
+    mean_salary = mean(salary_in_usd, na.rm = TRUE),
+    median_salary = median(salary_in_usd, na.rm = TRUE),
+    sd_salary = sd(salary_in_usd, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    min_salary = scales::dollar(min_salary),
+    max_salary = scales::dollar(max_salary),
+    mean_salary = scales::dollar(mean_salary),
+    median_salary = scales::dollar(median_salary),
+    sd_salary = scales::dollar(sd_salary)
+  )
+salary_summary_size
+```
+```{r}
+#Table 1- Data Scientist salary range between US versus offshore employees
+salary_summary <- title_grouped_comp_data |>
+ filter(
+ !is.na(salary_in_usd),
+ employment_type == "FT",
+ job_group == "Data Scientist",
+ !is.na(experience_level)
+ ) |>
+ mutate(currency_group = ifelse(salary_currency == "USD", "US", "Offshore")) |>
+ group_by(currency_group, experience_level) |>
+ summarise(
+ count = n(),
+ min_salary = min(salary_in_usd, na.rm = TRUE),
+ max_salary = max(salary_in_usd, na.rm = TRUE),
+ mean_salary = mean(salary_in_usd, na.rm = TRUE),
+ median_salary = median(salary_in_usd, na.rm = TRUE),
+ sd_salary = sd(salary_in_usd, na.rm = TRUE)
+ ) |>
+ mutate(
+ min_salary =  scales::dollar(min_salary),
+ max_salary = scales::dollar(max_salary),
+ mean_salary = scales::dollar(mean_salary),
+ median_salary = scales::dollar(median_salary),
+ sd_salary = scales::dollar(sd_salary)
+ )
+salary_summary
+```
+
+
+```{r}
+#Graph of differences in data scientist salaries from small to large companies
+title_grouped_comp_data |>
+  filter(
+    employment_type == "FT",
+    job_group == "Data Scientist",
+    !is.na(salary_in_usd),
+    !is.na(company_size)
+  ) |>
+  mutate(currency_group = ifelse(salary_currency == "USD", "US", "Offshore")) |>
+ggplot(aes(x = company_size, y = salary_in_usd, color= currency_group)) +
+  geom_boxplot(alpha = 0.7, outlier.color = "red") +
+  scale_y_continuous(labels = scales::dollar) +
+  scale_fill_viridis_d(option = "D", guide = FALSE) +  # color-blind-friendly
+  labs(
+    title = "Salary Distribution for Data Scientists by Company Size",
+    x = "Company Size",
+    y = "Salary (USD)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    axis.text.x = element_text(face = "bold")
+  )
+#Not a large difference in salaries between medium and large companies
+```
+
+```{r}
+#CI for offshore employees
+offshore_salaries <- title_grouped_comp_data %>%
+  filter(
+    !is.na(salary_in_usd),
+    employment_type == "FT",
+    job_group == "Data Scientist",
+    employee_residence != "US", # Offshore
+    experience_level %in% c("Mid Level")  # Mid Level employees
+  )
+salary_ci_offshore <- offshore_salaries %>%
+  group_by(experience_level) %>%
+  summarise(
+    n = n(),
+    mean_salary = mean(salary_in_usd),
+    sd_salary = sd(salary_in_usd),
+    se = sd_salary / sqrt(n),
+    t_critical = qt(0.975, df = n - 1),
+    ci_lower = mean_salary - t_critical * se,
+    ci_upper = mean_salary + t_critical * se,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    ci_lower = scales::dollar(ci_lower),
+    ci_upper = scales::dollar(ci_upper)
+  )
+
+# Print final CI table
+salary_ci_offshore
+```
+```{r}
+#CI for domestic employees
+offshore_salaries <- title_grouped_comp_data %>%
+  filter(
+    !is.na(salary_in_usd),
+    employment_type == "FT",
+    job_group == "Data Scientist",
+    employee_residence == "US", # Offshore
+    experience_level %in% c("Mid Level")  # Mid Level employees
+  )
+salary_ci_domestic <- offshore_salaries %>%
+  group_by(experience_level) %>%
+  summarise(
+    n = n(),
+    mean_salary = mean(salary_in_usd),
+    sd_salary = sd(salary_in_usd),
+    se = sd_salary / sqrt(n),
+    t_critical = qt(0.975, df = n - 1),
+    ci_lower = mean_salary - t_critical * se,
+    ci_upper = mean_salary + t_critical * se,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    ci_lower = scales::dollar(ci_lower),
+    ci_upper = scales::dollar(ci_upper)
+  )
+salary_ci_domestic
+```
+
+```{r}
+#Range is large for each experience level salary range, especially senior level but we are 95% confident that the true mean of a data scientist salary for an offshore mid level to senior level employees is somewhere within the upper lower bounds of $47,352.79-$70,575 & $73,063.52-$119,076 respectively. We actually don't have enough of a sample size for senior level employees, we need at least 30. I will alter the recommendation to not include a senior level employee. We also don't have enough for the mid level and domestic employees, but we'll use the data we have.
+```
+
+```{r}
+#A position needs to be filled for a full time data science position, and research was needed to ensure a competitive offer was given for the position. Offshore employees offer an opportunity to hire a more experienced employee at a lower cost. Larger companies do pay a higher salary but the difference is not major, and hiring an offshore employees remain cost effective. A higher level employee is needed since we're not hiring a whole team; an entry level employee would need too much guidance. Additionally the CEO wanted a candidate that could transition to leading a team of data scientists at some point. The ideal candidate would be a mid-level employee with a proven history of experience and should be an offshore hire. The ideal salary range for mid-level offshore employees is $47,352.79-$70,575.
+```
